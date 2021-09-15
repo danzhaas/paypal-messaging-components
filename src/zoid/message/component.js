@@ -2,6 +2,7 @@ import stringStartsWith from 'core-js-pure/stable/string/starts-with';
 import { create } from 'zoid/src';
 import { ZalgoPromise } from 'zalgo-promise/src';
 import { getCurrentScriptUID } from 'belter/src';
+import { SDK_SETTINGS } from '@paypal/sdk-constants/src';
 
 import {
     getMeta,
@@ -15,11 +16,14 @@ import {
     getGlobalState,
     getCurrentTime,
     writeStorageID,
-    getOrCreateStorageID,
     getStageTag,
+    getFeatures,
     ppDebug,
-    isScriptBeingDestroyed
+    isScriptBeingDestroyed,
+    getScriptAttributes,
+    getDeviceID
 } from '../../utils';
+
 import validate from './validation';
 import containerTemplate from './containerTemplate';
 
@@ -97,7 +101,6 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
                 required: false,
                 value: validate.ignoreCache
             },
-
             // Callbacks
             onClick: {
                 type: 'function',
@@ -148,14 +151,13 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
                 type: 'function',
                 queryParam: false,
                 value: ({ props }) => {
-                    const { onHover } = props;
+                    const { index, onHover } = props;
                     let hasHovered = false;
 
                     return ({ meta }) => {
-                        const { index } = props;
-
                         if (!hasHovered) {
                             hasHovered = true;
+
                             logger.track({
                                 index,
                                 et: 'CLIENT_IMPRESSION',
@@ -215,10 +217,7 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
                             activeTags,
                             index
                         });
-                        // Set visible to false to prevent this update from popping open the modal
-                        // when the user has previously opened the modal
-                        modal.updateProps({ refIndex: index, offer: offerType, visible: false });
-                        modal.render('body');
+                        modal.updateProps({ refIndex: index, offer: offerType });
 
                         logger.track({
                             index,
@@ -266,11 +265,12 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
 
                     // Handle moving the iframe around the DOM
                     return () => {
+                        const CLEAN_UP_DELAY = 0;
                         const { getContainer } = props;
                         const { messagesMap } = getGlobalState();
                         const container = getContainer();
                         // Let the cleanup finish before re-rendering
-                        ZalgoPromise.delay(0).then(() => {
+                        ZalgoPromise.delay(CLEAN_UP_DELAY).then(() => {
                             if (
                                 container &&
                                 container.ownerDocument.body.contains(container) &&
@@ -330,11 +330,17 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
                 value: getLibraryVersion,
                 debug: ppDebug(`Library Version: ${getLibraryVersion()}`)
             },
+            integrationType: {
+                type: 'string',
+                queryParam: true,
+                value: () => __MESSAGES__.__TARGET__,
+                debug: ppDebug(`Library Integration: ${__MESSAGES__.__TARGET__}`)
+            },
             deviceID: {
                 type: 'string',
                 queryParam: true,
-                value: getOrCreateStorageID,
-                debug: ppDebug(`Device ID: ${getOrCreateStorageID()}`)
+                value: getDeviceID,
+                debug: ppDebug(`Device ID: ${getDeviceID()}`)
             },
             sessionID: {
                 type: 'string',
@@ -351,7 +357,8 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
             debug: {
                 type: 'boolean',
                 queryParam: 'pp_debug',
-                value: () => /(\?|&)pp_debug=true(&|$)/.test(window.location.search)
+                required: false,
+                value: () => (/(\?|&)pp_debug=true(&|$)/.test(window.location.search) ? true : undefined)
             },
             messageLocation: {
                 type: 'string',
@@ -364,6 +371,21 @@ export default createGlobalVariableGetter('__paypal_credit_message__', () =>
                 queryParam: true,
                 required: false,
                 value: getStageTag
+            },
+            partnerAttributionId: {
+                type: 'string',
+                queryParam: true,
+                required: false,
+                value: () => (getScriptAttributes() ?? {})[SDK_SETTINGS.PARTNER_ATTRIBUTION_ID] ?? null,
+                debug: ppDebug(
+                    `Partner Attribution ID: ${(getScriptAttributes() ?? {})[SDK_SETTINGS.PARTNER_ATTRIBUTION_ID]}`
+                )
+            },
+            features: {
+                type: 'string',
+                queryParam: true,
+                required: false,
+                value: getFeatures
             }
         }
     })
